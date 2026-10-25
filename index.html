@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SupaBrainz Game</title>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#ffe9ef;--ink:#4a1630;--mute:#8f4a68;--panel:#ffd3df;
+  --a:#ffc2d1;--b:#ff8fb1;--c:#e23b78;--d:#a63a66;--padink:#4a1630;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){--bg:#2b0f1e;--ink:#ffe9ef;--mute:#d9a0b6;--panel:#3d1a2d}
+}
+:root[data-theme="dark"]{--bg:#2b0f1e;--ink:#ffe9ef;--mute:#d9a0b6;--panel:#3d1a2d}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%}body{margin:0;min-height:100%}
+body{background:var(--bg);color:var(--ink);font-family:"Baloo 2","Trebuchet MS",system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px}
+h1{font-size:clamp(28px,8vw,40px);font-weight:800;margin:0;letter-spacing:-.01em;line-height:1}
+.sub{margin:6px 0 0;color:var(--mute);font-size:16px;max-width:30ch;text-align:center}
+header{text-align:center}
+.board{width:min(80vw,42vh,340px);aspect-ratio:1;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pad{border:0;cursor:pointer;color:var(--padink);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font:inherit;font-weight:800;font-size:15px;filter:brightness(.8) saturate(.85);transition:filter .12s,transform .12s;-webkit-tap-highlight-color:transparent}
+.pad svg{width:56%;opacity:.35}
+.pad:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+.pad.lit{filter:brightness(1.12) saturate(1.15);transform:scale(1.04)}
+.p0{background:var(--a);border-radius:70% 18% 18% 30%}
+.p1{background:var(--b);border-radius:18% 70% 30% 18%}
+.p2{background:var(--c);border-radius:30% 18% 18% 70%}
+.p3{background:var(--d);border-radius:18% 30% 70% 18%}
+.p2,.p3{color:#fff}
+.stats{display:flex;gap:12px}
+.stat{background:var(--panel);border-radius:16px;padding:8px 20px;text-align:center;min-width:96px}
+.stat b{display:block;font-size:28px;line-height:1.1}
+.stat span{font-size:14px;color:var(--mute)}
+#msg{margin:0;font-size:20px;font-weight:800;min-height:1.4em;text-align:center}
+#go{font:inherit;font-weight:800;font-size:20px;background:var(--ink);color:var(--bg);border:0;border-radius:999px;padding:10px 32px;cursor:pointer}
+#go:focus-visible{outline:3px solid var(--d);outline-offset:3px}
+#go[hidden]{display:none}
+@media (prefers-reduced-motion:reduce){.pad{transition:none}.pad.lit{transform:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>SupaBrainz Game</h1>
+  <p class="sub">Watch the lobes light up, then repeat the pattern.</p>
+</header>
+<div class="board" id="board">
+  <button class="pad p0" aria-label="Frontal lobe, key 1"><svg viewBox="0 0 80 40" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M6 12q9-14 18 0t18 0t18 0M6 32q9-14 18 0t18 0t18 0"/></svg>Frontal</button>
+  <button class="pad p1" aria-label="Parietal lobe, key 2"><svg viewBox="0 0 80 40" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M6 12q9-14 18 0t18 0t18 0M6 32q9-14 18 0t18 0t18 0"/></svg>Parietal</button>
+  <button class="pad p2" aria-label="Temporal lobe, key 3"><svg viewBox="0 0 80 40" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M6 12q9-14 18 0t18 0t18 0M6 32q9-14 18 0t18 0t18 0"/></svg>Temporal</button>
+  <button class="pad p3" aria-label="Occipital lobe, key 4"><svg viewBox="0 0 80 40" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M6 12q9-14 18 0t18 0t18 0M6 32q9-14 18 0t18 0t18 0"/></svg>Occipital</button>
+</div>
+<p id="msg" aria-live="polite">Tap the brain or Start to play.</p>
+<button id="go">Start</button>
+<div class="stats">
+  <div class="stat"><b id="score">0</b><span>Round</span></div>
+  <div class="stat"><b id="best">0</b><span>Best</span></div>
+</div>
+<script>
+var pads=[].slice.call(document.querySelectorAll('.pad')),
+    msg=document.getElementById('msg'),go=document.getElementById('go'),
+    scoreEl=document.getElementById('score'),bestEl=document.getElementById('best'),
+    seq=[],pos=0,score=0,best=0,state='idle',ac=null;
+try{best=parseInt(localStorage.getItem('sb-best'),10)||0}catch(e){}
+bestEl.textContent=best;
+function wait(ms){return new Promise(function(r){setTimeout(r,ms)})}
+function tone(i,ms){
+  try{
+    ac=ac||new (window.AudioContext||window.webkitAudioContext)();
+    var o=ac.createOscillator(),g=ac.createGain();
+    o.type='sine';o.frequency.value=[262,330,392,523][i];
+    g.gain.value=.12;o.connect(g);g.connect(ac.destination);
+    o.start();g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+ms/1000);
+    o.stop(ac.currentTime+ms/1000);
+  }catch(e){}
+}
+function flash(i,ms){
+  pads[i].classList.add('lit');tone(i,ms);
+  return wait(ms).then(function(){pads[i].classList.remove('lit')});
+}
+function rank(s){return s<3?'Warming up':s<6?'Getting sharp':s<10?'Big brain':'Supabrain'}
+async function play(){
+  state='show';msg.textContent='Watch…';await wait(500);
+  var ms=Math.max(220,480-seq.length*18);
+  for(var k=0;k<seq.length;k++){await flash(seq[k],ms);await wait(140)}
+  state='input';pos=0;msg.textContent='Your turn';
+}
+function next(){seq.push(Math.floor(Math.random()*4));play()}
+function start(){seq=[];score=0;scoreEl.textContent=0;go.hidden=true;next()}
+function end(){
+  state='lock';setTimeout(function(){state='idle'},700);
+  if(score>best){best=score;bestEl.textContent=best;try{localStorage.setItem('sb-best',best)}catch(e){}}
+  msg.textContent='Missed it. You recalled '+score+' ('+rank(score)+').';
+  go.textContent='Play again';go.hidden=false;go.focus();
+}
+async function press(i){
+  if(state==='idle'){start();return}
+  if(state!=='input')return;
+  flash(i,200);
+  if(i!==seq[pos]){end();return}
+  pos++;
+  if(pos===seq.length){
+    state='show';score=seq.length;scoreEl.textContent=score;
+    msg.textContent='Nice. Round '+(score+1)+' next.';
+    await wait(800);next();
+  }
+}
+pads.forEach(function(p,i){p.addEventListener('click',function(){press(i)})});
+go.addEventListener('click',start);
+document.addEventListener('keydown',function(e){
+  var n=parseInt(e.key,10);
+  if(n>=1&&n<=4)press(n-1);
+});
+</script>
+</body>
+</html>
